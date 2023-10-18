@@ -1385,6 +1385,7 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
         if(u->cln == NULL)
             return NGX_UPLOAD_NOMEM;
 
+        //FIXME: Instead of using the u->session_id here... and (keep reading...)
         file->name.len = path->name.len + 1 + path->len + (u->session_id.len != 0 ? u->session_id.len : 10);
 
         file->name.data = ngx_palloc(u->request->pool, file->name.len + 1);
@@ -1396,6 +1397,8 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
 
         file->log = r->connection->log;
 
+        //FIXME: ...here, we might be able to pluck out the filename from the request object and use THAT to create the filename.
+        //       BUT... (keep reading to the (for(;;) block below...)
         if(u->session_id.len != 0) {
             (void) ngx_sprintf(file->name.data + path->name.len + 1 + path->len,
                                "%V%Z", &u->session_id);
@@ -1430,6 +1433,8 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
                                "hashed path of state file: %s", state_file->name.data);
             }
 
+            //IF we have a session ID, then we should probably change the CREATE_OR_OPEN arg to just CREATE, and RTFM to see
+            //   what sort of error message we'll get out of the system.
             file->fd = ngx_open_file(file->name.data, NGX_FILE_WRONLY, NGX_FILE_CREATE_OR_OPEN, ulcf->store_access);
 
             if (file->fd == NGX_INVALID_FILE) {
@@ -1443,6 +1448,8 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
             file->offset = u->content_range_n.start;
         }
         else{
+            // FIXME: ...Given that our temporary file names appear to fit the pattern HERE (many zeros left-padding a digit)
+            //           it may be that we should override the name in BOTH branches. Maybe. IDK.
             for(;;) {
                 n = (uint32_t) ngx_next_temp_number(0);
 
