@@ -1385,6 +1385,15 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
         if(u->cln == NULL)
             return NGX_UPLOAD_NOMEM;
 
+        // So... we might be able to get the original filename out of the 'product.file.original_filename' json key from the body.
+        //   but... that sorta sounds hard as hell, given that we (hopefully) don't have a JSON parser.
+        //    so, let's see if `om` (and/or curl and/or wget) sets any headers when it uploads that indicates OG filename
+        //      * does 'om --trace upload-product <blah blah blah>' ...
+        //    ...yep, no headers, but there is formdata, which rails reports is shaped like
+        //    '{"product"=>{"file"=>{"path"=>"/var/tempest/tmp/0000000008", "original_filename"=>"cf-5.0.0-build.13.pivotal"}}}'
+        //    ...although, the API docs say that one uploads with MIME type 'multipart/form-data' and the sole parameter being
+        //       product[file]=@/path/to/local/file.pivotal
+        //        ...let's see if we can find any way to read form-data from within an NGINX request.
         //FIXME: Instead of using the u->session_id here... and (keep reading...)
         file->name.len = path->name.len + 1 + path->len + (u->session_id.len != 0 ? u->session_id.len : 10);
 
