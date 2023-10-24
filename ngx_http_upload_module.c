@@ -1394,6 +1394,16 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
         //    ...although, the API docs say that one uploads with MIME type 'multipart/form-data' and the sole parameter being
         //       product[file]=@/path/to/local/file.pivotal
         //        ...let's see if we can find any way to read form-data from within an NGINX request.
+        //          Oh hey, we don't need to find a way to do that, it is already done for us!
+        //          Follow the call stack of ngx_http_upload_handler -> upload_parse_request_headers -> upload_parse_content_disposition
+        //            and we discover that -IF this is an 'multipart/form-data' request-, we end up with the name of the remote file in
+        //            u->file_name (which has a .len and .data member).
+        //             So, bingo, bango, we just use THAT as the name for the local file, rather than cooking one up! (Probably.)
+        //             FIXME: What do we do if the request isn't a 'multipart/form-data' request, so that field isn't filled?
+        //                    Uhhh... Well, a) I'm not sure that'll happen... this module seems to handle form-data.
+        //                                  b) we could check if u->file_name is NULL or if u->file_name.len == 0, and if either is true
+        //                                     then we fall back to whatever mechanism we WOULD have used, had we not chose to use the remote
+        //                                     filename for the on-disk filename.
         //FIXME: Instead of using the u->session_id here... and (keep reading...)
         file->name.len = path->name.len + 1 + path->len + (u->session_id.len != 0 ? u->session_id.len : 10);
 
