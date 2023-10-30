@@ -1405,20 +1405,53 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
         //                                     then we fall back to whatever mechanism we WOULD have used, had we not chose to use the remote
         //                                     filename for the on-disk filename.
         //FIXME: Instead of using the u->session_id here... and (keep reading...)
-        file->name.len = path->name.len + 1 + path->len + (u->session_id.len != 0 ? u->session_id.len : 10);
+        if (u->file_name.data != NULL && u->file_name.len > 0 ) {
+            file->name.len = path->name.len + 1 + path->len + (u->file_name.len);
 
-        file->name.data = ngx_palloc(u->request->pool, file->name.len + 1);
+            file->name.data = ngx_palloc(u->request->pool, file->name.len + 1);
 
-        if(file->name.data == NULL)
-            return NGX_UPLOAD_NOMEM;
+            if(file->name.data == NULL)
+                return NGX_UPLOAD_NOMEM;
 
-        ngx_memcpy(file->name.data, path->name.data, path->name.len);
+            ngx_memcpy(file->name.data, path->name.data, path->name.len);
+            // The ngx_snprint might be nice, but I think the memcpy is correct, maybe.
+            // (void) ngx_sprintf(file->name.data + path->name.len + 1 + path->len,
+            //                    "%V%s", u->file_name.data);
+            ngx_memcpy(file->name.data + path->name.len, u->file_name.data, u->file_name.len);
+
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                           "***Calculated filename: %s", file->name.data);
+
+
+        } else {
+            file->name.len = path->name.len + 1 + path->len + (u->session_id.len != 0 ? u->session_id.len : 10);
+
+            file->name.data = ngx_palloc(u->request->pool, file->name.len + 1);
+
+            if(file->name.data == NULL)
+                return NGX_UPLOAD_NOMEM;
+
+            ngx_memcpy(file->name.data, path->name.data, path->name.len);
+        }
 
         file->log = r->connection->log;
 
         //FIXME: ...here, we might be able to pluck out the filename from the request object and use THAT to create the filename.
         //       BUT... (keep reading to the (for(;;) block below...)
-        if(u->session_id.len != 0) {
+        if (u->file_name.data != NULL && u->file_name.len > 0 ) {
+            file->fd = ngx_open_file(file->name.data, NGX_FILE_WRONLY, (O_CREAT|O_EXCL), ulcf->store_access);
+
+            if (file->fd == NGX_INVALID_FILE) {
+                err = ngx_errno;
+
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, ngx_errno,
+                              "failed to create output file \"%V\" for \"%V\"", &file->name, &u->file_name);
+                return NGX_UPLOAD_IOERROR;
+            }
+
+            file->offset = u->content_range_n.start;
+        }
+        else if(u->session_id.len != 0) {
             (void) ngx_sprintf(file->name.data + path->name.len + 1 + path->len,
                                "%V%Z", &u->session_id);
 
