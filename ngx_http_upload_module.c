@@ -1406,23 +1406,54 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
         //                                     filename for the on-disk filename.
         //FIXME: Instead of using the u->session_id here... and (keep reading...)
         if (u->file_name.data != NULL && u->file_name.len > 0 ) {
-            file->name.len = path->name.len + 1 + path->len + (u->file_name.len);
+            file->name.len = path->name.len + 1 + (u->file_name.len);
+
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "Hello, my code has changed.");
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                          "*** Name len %d path len %d file_name len %d calculated len %d",
+                          path->name.len, path->len, u->file_name.len, file->name.len);
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                          "oh goody %d %d",
+                          u->file_name.len, path->name.len);
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                          "how about the pathname? %s",
+                          path->name.data);
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                          "how about the filename? %s",
+                          u->file_name.data);
 
             file->name.data = ngx_palloc(u->request->pool, file->name.len + 1);
 
             if(file->name.data == NULL)
                 return NGX_UPLOAD_NOMEM;
 
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                          "***Attempting to calculate filename");
+            // ngx_memcpy(file->name.data, path->name.data, path->name.len);
+            //  The ngx_snprint might be nice, but I think the memcpy is correct, maybe.
+            //  (void) ngx_sprintf(file->name.data + path->name.len + 1 + path->len,
+            //                     "%V%s", u->file_name.data);
+            //  (void) ngx_sprintf(file->name.data, "%s/%s%Z", path->name.data, u->file_name.data);
+            //  ngx_memcpy(file->name.data + path->name.len, "/", 1);
+            //  ngx_memcpy(file->name.data + path->name.len + 1, u->file_name.data, u->file_name.len);
+
+            // VERY CAREFULLY copy over the path and the filename.
+            //  Why very carefully? Because it seems that the u->file_name is not reliably
+            //  null-terminated.
+            // FIXME: Surely there's a helper function that will do this for me without
+            //        me having to do this math manually?
+            //        (Also, the memzero does nothing useful for us at the moment.)
+            ngx_memzero(file->name.data, file->name.len);
             ngx_memcpy(file->name.data, path->name.data, path->name.len);
-            // The ngx_snprint might be nice, but I think the memcpy is correct, maybe.
-            // (void) ngx_sprintf(file->name.data + path->name.len + 1 + path->len,
-            //                    "%V%s", u->file_name.data);
-            ngx_memcpy(file->name.data + path->name.len, u->file_name.data, u->file_name.len);
+            ngx_memcpy(file->name.data + path->name.len, "/", 1);
+            ngx_memcpy(file->name.data + path->name.len + 1, u->file_name.data, u->file_name.len);
+            ngx_memcpy(file->name.data + path->name.len + 1 + u->file_name.len, "\0", 1);
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                          "**** file->name.len %d, calculated len %d", file->name.len,
+                          path->name.len + 1 + u->file_name.len);
 
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                           "***Calculated filename: %s", file->name.data);
-
-
+                          "***Calculated filename: '%s'", file->name.data);
         } else {
             file->name.len = path->name.len + 1 + path->len + (u->session_id.len != 0 ? u->session_id.len : 10);
 
@@ -1446,7 +1477,12 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
 
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, ngx_errno,
                               "failed to create output file \"%V\" for \"%V\"", &file->name, &u->file_name);
-                return NGX_UPLOAD_IOERROR;
+                //OH, bad news. If we return with an error here, we trigger the "Delete file on exit" code, which we DO NOT want.
+                // Where do we register that callback?
+                // Hmm. Can we set u->partial_conent to something non-zero to get it to not delete the file?
+                u->partial_content = 1; //Yes, this does not delete the file.
+                // return NGX_UPLOAD_IOERROR; //This just causes us to retry (and screws up the memory for the filename, too.)
+                return NGX_UPLOAD_MALFORMED;
             }
 
             file->offset = u->content_range_n.start;
