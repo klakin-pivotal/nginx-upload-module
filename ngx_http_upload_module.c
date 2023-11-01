@@ -1406,7 +1406,9 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
         //                                     filename for the on-disk filename.
         //FIXME: Instead of using the u->session_id here... and (keep reading...)
         if (u->file_name.data != NULL && u->file_name.len > 0 ) {
-            file->name.len = path->name.len + 1 + (u->file_name.len);
+            //Include room for the separator between the path and the filename and also a trailing null,
+            //because this is going to open(2), which expects a null-terminated string.
+            file->name.len = path->name.len + 1 + (u->file_name.len) + 1;
 
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "Hello, my code has changed.");
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
@@ -1429,25 +1431,9 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
 
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                           "***Attempting to calculate filename");
-            // ngx_memcpy(file->name.data, path->name.data, path->name.len);
-            //  The ngx_snprint might be nice, but I think the memcpy is correct, maybe.
-            //  (void) ngx_sprintf(file->name.data + path->name.len + 1 + path->len,
-            //                     "%V%s", u->file_name.data);
-            //  (void) ngx_sprintf(file->name.data, "%s/%s%Z", path->name.data, u->file_name.data);
-            //  ngx_memcpy(file->name.data + path->name.len, "/", 1);
-            //  ngx_memcpy(file->name.data + path->name.len + 1, u->file_name.data, u->file_name.len);
 
-            // VERY CAREFULLY copy over the path and the filename.
-            //  Why very carefully? Because it seems that the u->file_name is not reliably
-            //  null-terminated.
-            // FIXME: Surely there's a helper function that will do this for me without
-            //        me having to do this math manually?
-            //        (Also, the memzero does nothing useful for us at the moment.)
-            ngx_memzero(file->name.data, file->name.len);
-            ngx_memcpy(file->name.data, path->name.data, path->name.len);
-            ngx_memcpy(file->name.data + path->name.len, "/", 1);
-            ngx_memcpy(file->name.data + path->name.len + 1, u->file_name.data, u->file_name.len);
-            ngx_memcpy(file->name.data + path->name.len + 1 + u->file_name.len, "\0", 1);
+            ngx_snprintf(file->name.data, file->name.len, "%V/%V%Z", &path->name, &u->file_name);
+
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                           "**** file->name.len %d, calculated len %d", file->name.len,
                           path->name.len + 1 + u->file_name.len);
