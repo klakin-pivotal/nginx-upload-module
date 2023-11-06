@@ -179,6 +179,7 @@ typedef struct {
     ngx_flag_t                    tame_arrays;
     ngx_flag_t                    resumable_uploads;
     ngx_flag_t                    empty_field_names;
+    ngx_flag_t                    prohibit_simultaneous_same_file_upload;
     size_t                        limit_rate;
 
     unsigned int                  md5:1;
@@ -669,6 +670,17 @@ static ngx_command_t  ngx_http_upload_commands[] = { /* {{{ */
       ngx_http_upload_add_header,
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_http_upload_loc_conf_t, header_templates),
+      NULL},
+
+    /*
+     * Specifies that we should permit only one simultaneous upload of a given file
+     */
+    { ngx_string("upload_prohibit_simultaneous_with_same_filename"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LMT_CONF|NGX_HTTP_LIF_CONF
+                        |NGX_CONF_FLAG,
+      ngx_conf_set_flag_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_upload_loc_conf_t, prohibit_simultaneous_same_file_upload),
       NULL},
 
       ngx_null_command
@@ -1453,9 +1465,14 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
 
         file->log = r->connection->log;
 
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, ngx_errno, "Is Prohibit Simultaneous Same File Uploads enabled? %d",
+                        ulcf->prohibit_simultaneous_same_file_upload);
         //FIXME: ...here, we might be able to pluck out the filename from the request object and use THAT to create the filename.
         //       BUT... (keep reading to the (for(;;) block below...)
-        if (u->file_name.data != NULL && u->file_name.len > 0 ) {
+        //
+        // If our formdata's filename is zero-length, let's fall back to one of the other upload filename creation schemes.
+        // Creating a zero-length filename is almost certainly illegal everywhere.
+        if (ulcf->prohibit_simultaneous_same_file_upload && u->file_name.len > 0 ) {
             file->fd = ngx_open_file(file->name.data, NGX_FILE_WRONLY, (O_CREAT|O_EXCL), ulcf->store_access);
 
             if (file->fd == NGX_INVALID_FILE) {
@@ -1467,6 +1484,9 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
                 // Where do we register that callback?
                 // Hmm. Can we set u->partial_conent to something non-zero to get it to not delete the file?
                 u->partial_content = 1; //Yes, this does not delete the file.
+                //FIXME: Oh, actually, the comment on the 'NGX_UPLOAD_IOERROR' return is incorrect... (we were screwing up the memory ourselves)
+                //       so, let's play around with (and/or rtfm) with return codes to see if we could get NGINX to return something
+                //       that seems more like a "Go away now" than a 400 (which _UPLOAD_MALFORMED seems to).
                 // return NGX_UPLOAD_IOERROR; //This just causes us to retry (and screws up the memory for the filename, too.)
                 return NGX_UPLOAD_MALFORMED;
             }
@@ -2316,6 +2336,7 @@ ngx_http_upload_create_loc_conf(ngx_conf_t *cf)
     conf->tame_arrays = NGX_CONF_UNSET;
     conf->resumable_uploads = NGX_CONF_UNSET;
     conf->empty_field_names = NGX_CONF_UNSET;
+    conf->prohibit_simultaneous_same_file_upload = NGX_CONF_UNSET;
 
     conf->buffer_size = NGX_CONF_UNSET_SIZE;
     conf->merge_buffer_size = NGX_CONF_UNSET_SIZE;
@@ -2406,6 +2427,11 @@ ngx_http_upload_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     if(conf->empty_field_names == NGX_CONF_UNSET) {
         conf->empty_field_names = (prev->empty_field_names != NGX_CONF_UNSET) ?
             prev->empty_field_names : 0;
+    }
+
+    if(conf->prohibit_simultaneous_same_file_upload == NGX_CONF_UNSET) {
+        conf->prohibit_simultaneous_same_file_upload = (prev->prohibit_simultaneous_same_file_upload != NGX_CONF_UNSET) ?
+            prev->prohibit_simultaneous_same_file_upload : 0;
     }
 
     if(conf->field_templates == NULL) {
