@@ -288,7 +288,7 @@ typedef struct ngx_http_upload_ctx_s {
     unsigned int        unencoded:1;
     unsigned int        no_content:1;
     unsigned int        raw_input:1;
-    unsigned int        no_cleanup_because_prohibit_simultaneous_is_active:1;
+    unsigned int        no_cleanup_because_prohibit_simultaneous_same_file_upload_is_active:1;
 } ngx_http_upload_ctx_t;
 
 static ngx_int_t ngx_http_upload_test_expect(ngx_http_request_t *r);
@@ -884,7 +884,7 @@ ngx_http_upload_handler(ngx_http_request_t *r)
     u->limit_rate = ulcf->limit_rate;
     u->received = 0;
     u->ordinal = 0;
-    u->no_cleanup_because_prohibit_simultaneous_is_active = 0;
+    u->no_cleanup_because_prohibit_simultaneous_same_file_upload_is_active = 0;
 
     upload_init_ctx(u);
 
@@ -1460,7 +1460,7 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, ngx_errno,
                               "failed to create output file \"%V\" for \"%V\"", &file->name, &u->file_name);
                 /* Signal to the upload_abort_handler to not delete the file, as someone else is writing to it. */
-                u->no_cleanup_because_prohibit_simultaneous_is_active = 1;
+                u->no_cleanup_because_prohibit_simultaneous_same_file_upload_is_active = 1;
                 //FIXME: Oh, actually, the comment on the 'NGX_UPLOAD_IOERROR' return is incorrect... (we were screwing up the memory ourselves)
                 //       so, let's play around with (and/or rtfm) with return codes to see if we could get NGINX to return something
                 //       that seems more like a "Go away now" than a 400 (which _UPLOAD_MALFORMED seems to).
@@ -1826,7 +1826,7 @@ static void ngx_http_upload_abort_handler(ngx_http_upload_ctx_t *u) { /* {{{ */
 
         ngx_close_file(u->output_file.fd);
 
-        if(!u->partial_content || u->no_cleanup_because_prohibit_simultaneous_is_active) {
+        if(!u->partial_content || u->no_cleanup_because_prohibit_simultaneous_same_file_upload_is_active) {
             if(ngx_delete_file(u->output_file.name.data) == NGX_FILE_ERROR) { 
                 ngx_log_error(NGX_LOG_ERR, u->log, ngx_errno
                     , "aborted uploading file \"%V\" to \"%V\", failed to remove destination file"
