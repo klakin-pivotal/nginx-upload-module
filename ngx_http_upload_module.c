@@ -1399,26 +1399,6 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
         if(u->cln == NULL)
             return NGX_UPLOAD_NOMEM;
 
-        // So... we might be able to get the original filename out of the 'product.file.original_filename' json key from the body.
-        //   but... that sorta sounds hard as hell, given that we (hopefully) don't have a JSON parser.
-        //    so, let's see if `om` (and/or curl and/or wget) sets any headers when it uploads that indicates OG filename
-        //      * does 'om --trace upload-product <blah blah blah>' ...
-        //    ...yep, no headers, but there is formdata, which rails reports is shaped like
-        //    '{"product"=>{"file"=>{"path"=>"/var/tempest/tmp/0000000008", "original_filename"=>"cf-5.0.0-build.13.pivotal"}}}'
-        //    ...although, the API docs say that one uploads with MIME type 'multipart/form-data' and the sole parameter being
-        //       product[file]=@/path/to/local/file.pivotal
-        //        ...let's see if we can find any way to read form-data from within an NGINX request.
-        //          Oh hey, we don't need to find a way to do that, it is already done for us!
-        //          Follow the call stack of ngx_http_upload_handler -> upload_parse_request_headers -> upload_parse_content_disposition
-        //            and we discover that -IF this is an 'multipart/form-data' request-, we end up with the name of the remote file in
-        //            u->file_name (which has a .len and .data member).
-        //             So, bingo, bango, we just use THAT as the name for the local file, rather than cooking one up! (Probably.)
-        //             FIXME: What do we do if the request isn't a 'multipart/form-data' request, so that field isn't filled?
-        //                    Uhhh... Well, a) I'm not sure that'll happen... this module seems to handle form-data.
-        //                                  b) we could check if u->file_name is NULL or if u->file_name.len == 0, and if either is true
-        //                                     then we fall back to whatever mechanism we WOULD have used, had we not chose to use the remote
-        //                                     filename for the on-disk filename.
-        //FIXME: Instead of using the u->session_id here... and (keep reading...)
         if (ulcf->prohibit_simultaneous_same_file_upload && u->file_name.data != NULL && u->file_name.len > 0 ) {
             //Include room for the separator between the path and the filename and also a trailing null,
             //because this is going to open(2), which expects a null-terminated string.
@@ -1469,9 +1449,6 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
 
         ngx_log_error(NGX_LOG_ERR, r->connection->log, ngx_errno, "Is Prohibit Simultaneous Same File Uploads enabled? %d",
                         ulcf->prohibit_simultaneous_same_file_upload);
-        //FIXME: ...here, we might be able to pluck out the filename from the request object and use THAT to create the filename.
-        //       BUT... (keep reading to the (for(;;) block below...)
-        //
         // If our formdata's filename is zero-length, let's fall back to one of the other upload filename creation schemes.
         // Creating a zero-length filename is almost certainly illegal everywhere.
         if (ulcf->prohibit_simultaneous_same_file_upload && u->file_name.len > 0 ) {
@@ -1482,8 +1459,6 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
 
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, ngx_errno,
                               "failed to create output file \"%V\" for \"%V\"", &file->name, &u->file_name);
-                //OH, bad news. If we return with an error here, we trigger the "Delete file on exit" code, which we DO NOT want.
-                // Where do we register that callback?
                 /* Signal to the upload_abort_handler to not delete the file, as someone else is writing to it. */
                 u->no_cleanup_because_prohibit_simultaneous_is_active = 1;
                 //FIXME: Oh, actually, the comment on the 'NGX_UPLOAD_IOERROR' return is incorrect... (we were screwing up the memory ourselves)
@@ -1529,8 +1504,6 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
                                "hashed path of state file: %s", state_file->name.data);
             }
 
-            //IF we have a session ID, then we should probably change the CREATE_OR_OPEN arg to just CREATE, and RTFM to see
-            //   what sort of error message we'll get out of the system.
             file->fd = ngx_open_file(file->name.data, NGX_FILE_WRONLY, NGX_FILE_CREATE_OR_OPEN, ulcf->store_access);
 
             if (file->fd == NGX_INVALID_FILE) {
@@ -1544,8 +1517,6 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
             file->offset = u->content_range_n.start;
         }
         else{
-            // FIXME: ...Given that our temporary file names appear to fit the pattern HERE (many zeros left-padding a digit)
-            //           it may be that we should override the name in BOTH branches. Maybe. IDK.
             for(;;) {
                 n = (uint32_t) ngx_next_temp_number(0);
 
