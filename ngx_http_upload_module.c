@@ -1417,7 +1417,7 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
         //                                     then we fall back to whatever mechanism we WOULD have used, had we not chose to use the remote
         //                                     filename for the on-disk filename.
         //FIXME: Instead of using the u->session_id here... and (keep reading...)
-        if (u->file_name.data != NULL && u->file_name.len > 0 ) {
+        if (ulcf->prohibit_simultaneous_same_file_upload && u->file_name.data != NULL && u->file_name.len > 0 ) {
             //Include room for the separator between the path and the filename and also a trailing null,
             //because this is going to open(2), which expects a null-terminated string.
             file->name.len = path->name.len + 1 + (u->file_name.len) + 1;
