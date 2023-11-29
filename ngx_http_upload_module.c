@@ -1404,36 +1404,12 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
             //because this is going to open(2), which expects a null-terminated string.
             file->name.len = path->name.len + 1 + (u->file_name.len) + 1;
 
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "Hello, my code has changed.");
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                          "*** Name len %d path len %d file_name len %d calculated len %d",
-                          path->name.len, path->len, u->file_name.len, file->name.len);
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                          "oh goody %d %d",
-                          u->file_name.len, path->name.len);
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                          "how about the pathname? %s",
-                          path->name.data);
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                          "how about the filename? %s",
-                          u->file_name.data);
-
             file->name.data = ngx_palloc(u->request->pool, file->name.len + 1);
 
             if(file->name.data == NULL)
                 return NGX_UPLOAD_NOMEM;
 
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                          "***Attempting to calculate filename");
-
             ngx_snprintf(file->name.data, file->name.len, "%V/%V%Z", &path->name, &u->file_name);
-
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                          "**** file->name.len %d, calculated len %d", file->name.len,
-                          path->name.len + 1 + u->file_name.len);
-
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                          "***Calculated filename: '%s'", file->name.data);
         } else {
             file->name.len = path->name.len + 1 + path->len + (u->session_id.len != 0 ? u->session_id.len : 10);
 
