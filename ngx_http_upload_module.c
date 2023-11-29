@@ -1428,6 +1428,17 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
         // If our formdata's filename is zero-length, let's fall back to one of the other upload filename creation schemes.
         // Creating a zero-length filename is almost certainly illegal everywhere.
         if (ulcf->prohibit_simultaneous_same_file_upload && u->file_name.len > 0 ) {
+            /*
+             * Partial content requires that we add to an existing file, which is incompatible with using the presence
+             * of said file to know that an upload is currently ongoing.
+             */
+            if(u->partial_content) {
+                // FIXME: Don't know why returning NGX_UPLOAD_MALFORMED causes the server started by the tests to return a 500...
+                //        It's not ngx_log_error, as replacing that with ngx_log_debug, or simply not logging at all has the same result.
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, ngx_errno, "HTTP Partial content does not work with upload_prohibit_simultaneous_with_same_filename");
+                return NGX_UPLOAD_MALFORMED;
+            }
+
             file->fd = ngx_open_file(file->name.data, NGX_FILE_WRONLY, (O_CREAT|O_EXCL), ulcf->store_access);
 
             if (file->fd == NGX_INVALID_FILE) {
@@ -1440,8 +1451,8 @@ static ngx_int_t ngx_http_upload_start_handler(ngx_http_upload_ctx_t *u) { /* {{
                 //FIXME: Oh, actually, the comment on the 'NGX_UPLOAD_IOERROR' return is incorrect... (we were screwing up the memory ourselves)
                 //       so, let's play around with (and/or rtfm) with return codes to see if we could get NGINX to return something
                 //       that seems more like a "Go away now" than a 400 (which _UPLOAD_MALFORMED seems to).
-                // return NGX_UPLOAD_IOERROR; //This just causes us to retry (and screws up the memory for the filename, too.)
-                return NGX_UPLOAD_MALFORMED;
+                return NGX_UPLOAD_IOERROR;
+                // return NGX_UPLOAD_MALFORMED;
             }
 
             file->offset = u->content_range_n.start;
